@@ -3,6 +3,13 @@
     "displayName": "LaTeX Visualizer",
     "description": "A lightweight live preview for LaTeX prose and formulas.",
     "version": "0.0.1",
+    "icon": "image/icon.png",
+    "publisher": "ovolab-veritas",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/VeriTas-arch/parquet-visualizer"
+    },
+    "license": "BSD 3-Clause",
     "engines": {
         "vscode": "^1.120.0"
     },
@@ -30,13 +37,10 @@
     "scripts": {
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
         "sample": "node scripts/check-samples.mjs",
-        "pretest": "npm run compile && npm run lint",
         "lint": "eslint src"
     },
     "devDependencies": {
-        "@types/mocha": "^10.0.10",
         "@types/node": "22.x",
         "@types/vscode": "^1.120.0",
         "eslint": "^9.39.3",

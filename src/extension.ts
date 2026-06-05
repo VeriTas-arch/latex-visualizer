@@ -18,6 +18,10 @@ class LatexPreview {
 	private panel: vscode.WebviewPanel | undefined;
 	private document: vscode.TextDocument | undefined;
 	private debounce: NodeJS.Timeout | undefined;
+	private webviewReady = false;
+	private lastSentUri: string | undefined;
+	private lastSentVersion: number | undefined;
+	private sourceViewColumn: vscode.ViewColumn | undefined;
 
 	constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -29,29 +33,45 @@ class LatexPreview {
 		}
 
 		this.document = editor.document;
+		this.sourceViewColumn = editor.viewColumn;
 
-		if (!this.panel) {
-			this.panel = vscode.window.createWebviewPanel(
-				'latexVisualizerPreview',
-				'LaTeX Preview',
-				vscode.ViewColumn.Beside,
-				{
-					enableScripts: true,
-					localResourceRoots: [
-						vscode.Uri.joinPath(this.extensionUri, 'node_modules', 'katex', 'dist')
-					]
-				}
-			);
-
-			this.panel.onDidDispose(() => {
-				this.panel = undefined;
-				this.document = undefined;
-				this.clearDebounce();
-			});
+		if (this.panel) {
+			this.panel.reveal(vscode.ViewColumn.Beside);
+			this.postRender();
+			return;
 		}
 
+		this.webviewReady = false;
+		this.panel = vscode.window.createWebviewPanel(
+			'latexVisualizerPreview',
+			`LaTeX Preview: ${editor.document.fileName.split(/[\\/]/).pop() ?? 'Untitled'}`,
+			vscode.ViewColumn.Beside,
+			{
+				enableScripts: true,
+				retainContextWhenHidden: true,
+				localResourceRoots: [
+					vscode.Uri.joinPath(this.extensionUri, 'node_modules', 'katex', 'dist')
+				]
+			}
+		);
+		this.panel.webview.onDidReceiveMessage((message) => {
+			if (message?.type === 'ready') {
+				this.webviewReady = true;
+				this.postRender(true);
+			} else if (message?.type === 'jumpToLine' && typeof message.line === 'number') {
+				void this.jumpToLine(message.line);
+			}
+		});
 		this.panel.webview.html = this.html(this.panel.webview);
-		this.postRender();
+
+		this.panel.onDidDispose(() => {
+			this.panel = undefined;
+			this.document = undefined;
+			this.webviewReady = false;
+			this.lastSentUri = undefined;
+			this.lastSentVersion = undefined;
+			this.clearDebounce();
+		});
 	}
 
 	onDocumentChange(document: vscode.TextDocument) {
@@ -69,15 +89,23 @@ class LatexPreview {
 		}
 
 		this.document = editor.document;
+		this.sourceViewColumn = editor.viewColumn;
 		this.panel.title = `LaTeX Preview: ${editor.document.fileName.split(/[\\/]/).pop() ?? 'Untitled'}`;
 		this.postRender();
 	}
 
-	private postRender() {
-		if (!this.panel || !this.document) {
+	private postRender(force = false) {
+		if (!this.panel || !this.document || !this.webviewReady) {
 			return;
 		}
 
+		const uri = this.document.uri.toString();
+		if (!force && this.lastSentUri === uri && this.lastSentVersion === this.document.version) {
+			return;
+		}
+
+		this.lastSentUri = uri;
+		this.lastSentVersion = this.document.version;
 		void this.panel.webview.postMessage({
 			type: 'render',
 			fileName: this.document.fileName,
@@ -90,6 +118,21 @@ class LatexPreview {
 			clearTimeout(this.debounce);
 			this.debounce = undefined;
 		}
+	}
+
+	private async jumpToLine(line: number) {
+		if (!this.document) {
+			return;
+		}
+
+		const targetLine = Math.max(0, Math.min(this.document.lineCount - 1, Math.floor(line) - 1));
+		const editor = await vscode.window.showTextDocument(this.document, {
+			viewColumn: this.sourceViewColumn ?? vscode.ViewColumn.One,
+			preserveFocus: false
+		});
+		const position = new vscode.Position(targetLine, 0);
+		editor.selection = new vscode.Selection(position, position);
+		editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 	}
 
 	private html(webview: vscode.Webview) {
@@ -175,6 +218,10 @@ class LatexPreview {
 			margin: 0.7em 0;
 		}
 
+		[data-source-line] {
+			cursor: default;
+		}
+
 		.math-block {
 			overflow-x: auto;
 			margin: 1em 0;
@@ -234,6 +281,33 @@ class LatexPreview {
 			font-style: italic;
 		}
 
+		.algorithm-wrap {
+			margin: 1em 0;
+			padding: 10px 12px;
+			border: 1px solid var(--border);
+			background: var(--code);
+		}
+
+		.algorithm-title {
+			margin-bottom: 8px;
+			font-weight: 600;
+		}
+
+		.algorithm-steps {
+			margin: 0;
+			padding-left: 22px;
+		}
+
+		.algorithm-steps li {
+			margin: 4px 0;
+		}
+
+		.algorithm-keyword {
+			margin-right: 6px;
+			color: var(--muted);
+			font-weight: 600;
+		}
+
 		.table-wrap {
 			overflow-x: auto;
 			margin: 1em 0;
@@ -271,7 +345,20 @@ class LatexPreview {
 		const file = document.getElementById('file');
 		let currentSource = '';
 
+		vscode.postMessage({ type: 'ready' });
+
 		document.getElementById('refresh').addEventListener('click', () => render(currentSource));
+		preview.addEventListener('dblclick', (event) => {
+			const target = event.target instanceof Element ? event.target.closest('[data-source-line]') : undefined;
+			if (!target) {
+				return;
+			}
+
+			const line = Number(target.dataset.sourceLine);
+			if (Number.isFinite(line)) {
+				vscode.postMessage({ type: 'jumpToLine', line });
+			}
+		});
 
 		window.addEventListener('message', (event) => {
 			if (event.data.type !== 'render') {
@@ -291,9 +378,10 @@ class LatexPreview {
 			const nodes = [];
 			let paragraph;
 
-			function ensureParagraph() {
+			function ensureParagraph(line) {
 				if (!paragraph) {
 					paragraph = document.createElement('p');
+					setSourceLine(paragraph, line);
 				}
 				return paragraph;
 			}
@@ -307,17 +395,17 @@ class LatexPreview {
 
 			for (const part of parts) {
 				if (part.type === 'text') {
-					appendText(part.value, ensureParagraph, flushParagraph, nodes);
+					appendText(part.value, part.line, ensureParagraph, flushParagraph, nodes);
 				} else if (part.type === 'math') {
 					if (part.display) {
 						flushParagraph();
-						nodes.push(renderMath(part.value, part.display, part.env));
+						nodes.push(withSourceLine(renderMath(part.value, part.display, part.env), part.line));
 					} else {
-						ensureParagraph().append(renderMath(part.value, part.display, part.env));
+						ensureParagraph(part.line).append(withSourceLine(renderMath(part.value, part.display, part.env), part.line));
 					}
 				} else if (part.type === 'block') {
 					flushParagraph();
-					nodes.push(renderBlock(part));
+					nodes.push(withSourceLine(renderBlock(part), part.line));
 				}
 			}
 
@@ -325,12 +413,14 @@ class LatexPreview {
 			return nodes.length ? nodes : [element('p', 'placeholder', 'Empty document')];
 		}
 
-		function appendText(text, ensureParagraph, flushParagraph, nodes) {
+		function appendText(text, startLine, ensureParagraph, flushParagraph, nodes) {
 			const lines = text.replace(/\\r/g, '').split('\\n');
+			let sourceLine = startLine;
 
 			for (const line of lines) {
 				if (!line.trim()) {
 					flushParagraph();
+					sourceLine++;
 					continue;
 				}
 
@@ -339,12 +429,15 @@ class LatexPreview {
 					flushParagraph();
 					const level = { chapter: 'h1', section: 'h2', subsection: 'h3', subsubsection: 'h4', paragraph: 'h4' }[heading[1]];
 					const node = document.createElement(level);
+					setSourceLine(node, sourceLine);
 					appendInlineLatex(node, heading[2]);
 					nodes.push(node);
+					sourceLine++;
 					continue;
 				}
 
-				appendInlineLatex(ensureParagraph(), line + ' ');
+				appendInlineLatex(ensureParagraph(sourceLine), line + ' ');
+				sourceLine++;
 			}
 		}
 
@@ -357,9 +450,76 @@ class LatexPreview {
 				return renderTable(part.value);
 			}
 
+			if (part.env === 'algorithm') {
+				return renderAlgorithm(part.value);
+			}
+
 			const pre = document.createElement('pre');
 			pre.textContent = cleanInlineText(part.value);
 			return pre;
+		}
+
+		function renderAlgorithm(source) {
+			const wrapper = document.createElement('div');
+			wrapper.className = 'algorithm-wrap';
+
+			const captionText = readCommandArgument(source, 'caption');
+			if (captionText) {
+				const title = element('div', 'algorithm-title', '');
+				appendInlineLatex(title, captionText);
+				wrapper.append(title);
+			}
+
+			const algorithmic = source.match(/\\\\begin\\{algorithmic\\}([\\s\\S]*?)\\\\end\\{algorithmic\\}/);
+			if (!algorithmic) {
+				const fallback = document.createElement('p');
+				appendInlineLatex(fallback, cleanInlineText(source));
+				wrapper.append(fallback);
+				return wrapper;
+			}
+
+			const list = document.createElement('ol');
+			list.className = 'algorithm-steps';
+			for (const rawLine of algorithmic[1].split('\\n')) {
+				const parsed = parseAlgorithmLine(rawLine);
+				if (!parsed) {
+					continue;
+				}
+
+				const item = document.createElement('li');
+				if (parsed.keyword) {
+					item.append(element('span', 'algorithm-keyword', parsed.keyword));
+				}
+				appendInlineLatex(item, parsed.text);
+				list.append(item);
+			}
+
+			wrapper.append(list);
+			return wrapper;
+		}
+
+		function parseAlgorithmLine(line) {
+			const trimmed = line.trim();
+			if (!trimmed) {
+				return undefined;
+			}
+
+			const command = trimmed.match(/^\\\\(REQUIRE|ENSURE|STATE)\\s+([\\s\\S]*)$/);
+			if (command) {
+				const labels = { REQUIRE: 'Require', ENSURE: 'Ensure', STATE: '' };
+				return { keyword: labels[command[1]], text: command[2] };
+			}
+
+			const loop = trimmed.match(/^\\\\FOR\\{([\\s\\S]*)\\}$/);
+			if (loop) {
+				return { keyword: 'For', text: loop[1] };
+			}
+
+			if (/^\\\\ENDFOR\\b/.test(trimmed)) {
+				return { keyword: 'EndFor', text: '' };
+			}
+
+			return { keyword: '', text: trimmed };
 		}
 
 		function renderFigure(source) {
@@ -401,10 +561,10 @@ class LatexPreview {
 			const table = document.createElement('table');
 			const tbody = document.createElement('tbody');
 			const rows = tableSource[1]
-				.replace(/\\\\(toprule|midrule|bottomrule|hline)\\b/g, '\\\\')
+				.replace(/\\\\(toprule|midrule|bottomrule|hline)\\b/g, '')
 				.split(/\\\\\\\\(?:\\s*\\[[^\\]]*\\])?/g)
 				.map((row) => row.trim())
-				.filter(Boolean);
+				.filter((row) => row && !/^\\\\+$/.test(row));
 
 			for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
 				const row = document.createElement('tr');
@@ -490,8 +650,8 @@ class LatexPreview {
 					const contentStart = i + block.open.length;
 					const end = source.indexOf(endToken, contentStart);
 					if (end !== -1) {
-						pushText(parts, source.slice(textStart, i));
-						parts.push({ type: 'block', value: source.slice(i, end + endToken.length), env: block.base });
+						pushText(parts, source.slice(textStart, i), lineAt(source, textStart));
+						parts.push({ type: 'block', value: source.slice(i, end + endToken.length), env: block.base, line: lineAt(source, i) });
 						i = end + endToken.length;
 						textStart = i;
 						continue;
@@ -522,8 +682,8 @@ class LatexPreview {
 					const contentStart = i + env.open.length;
 					const end = source.indexOf(endToken, contentStart);
 					if (end !== -1) {
-						pushText(parts, source.slice(textStart, i));
-						parts.push({ type: 'math', value: source.slice(contentStart, end), display: true, env: env.base });
+						pushText(parts, source.slice(textStart, i), lineAt(source, textStart));
+						parts.push({ type: 'math', value: source.slice(contentStart, end), display: true, env: env.base, line: lineAt(source, i) });
 						i = end + endToken.length;
 						textStart = i;
 						continue;
@@ -539,7 +699,7 @@ class LatexPreview {
 				i++;
 			}
 
-			pushText(parts, source.slice(textStart));
+			pushText(parts, source.slice(textStart), lineAt(source, textStart));
 			return parts;
 		}
 
@@ -548,8 +708,8 @@ class LatexPreview {
 			if (end === -1) {
 				return start + 1;
 			}
-			pushText(parts, source.slice(textStart, start));
-			parts.push({ type: 'math', value: source.slice(contentStart, end), display, env: '' });
+			pushText(parts, source.slice(textStart, start), lineAt(source, textStart));
+			parts.push({ type: 'math', value: source.slice(contentStart, end), display, env: '', line: lineAt(source, start) });
 			return end + close.length;
 		}
 
@@ -561,8 +721,8 @@ class LatexPreview {
 					continue;
 				}
 				if (source[i] === '$' && source[i - 1] !== '\\\\') {
-					pushText(parts, source.slice(textStart, start));
-					parts.push({ type: 'math', value: source.slice(start + 1, i), display: false, env: '' });
+					pushText(parts, source.slice(textStart, start), lineAt(source, textStart));
+					parts.push({ type: 'math', value: source.slice(start + 1, i), display: false, env: '', line: lineAt(source, start) });
 					return i + 1;
 				}
 				i++;
@@ -591,9 +751,30 @@ class LatexPreview {
 			return nextLine === -1 ? source.length : nextLine + 1;
 		}
 
-		function pushText(parts, value) {
+		function pushText(parts, value, line) {
 			if (value) {
-				parts.push({ type: 'text', value });
+				parts.push({ type: 'text', value, line });
+			}
+		}
+
+		function lineAt(source, index) {
+			let line = 1;
+			for (let i = 0; i < index; i++) {
+				if (source[i] === '\\n') {
+					line++;
+				}
+			}
+			return line;
+		}
+
+		function withSourceLine(node, line) {
+			setSourceLine(node, line);
+			return node;
+		}
+
+		function setSourceLine(node, line) {
+			if (Number.isFinite(line)) {
+				node.dataset.sourceLine = String(line);
 			}
 		}
 
