@@ -59,7 +59,7 @@ class LatexPreview {
 				this.webviewReady = true;
 				this.postRender(true);
 			} else if (message?.type === 'jumpToLine' && typeof message.line === 'number') {
-				void this.jumpToLine(message.line);
+				void this.jumpToLine(message.line, typeof message.selectedText === 'string' ? message.selectedText : '');
 			}
 		});
 		this.panel.webview.html = this.html(this.panel.webview);
@@ -120,19 +120,42 @@ class LatexPreview {
 		}
 	}
 
-	private async jumpToLine(line: number) {
+	private async jumpToLine(line: number, selectedText: string) {
 		if (!this.document) {
 			return;
 		}
 
-		const targetLine = Math.max(0, Math.min(this.document.lineCount - 1, Math.floor(line) - 1));
+		const target = this.findJumpTarget(line, selectedText);
 		const editor = await vscode.window.showTextDocument(this.document, {
 			viewColumn: this.sourceViewColumn ?? vscode.ViewColumn.One,
 			preserveFocus: false
 		});
-		const position = new vscode.Position(targetLine, 0);
+		const position = new vscode.Position(target.line, target.character);
 		editor.selection = new vscode.Selection(position, position);
 		editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+	}
+
+	private findJumpTarget(line: number, selectedText: string) {
+		if (!this.document) {
+			return { line: 0, character: 0 };
+		}
+
+		const fallbackLine = Math.max(0, Math.min(this.document.lineCount - 1, Math.floor(line) - 1));
+		const needle = normalizeSelectedText(selectedText);
+		if (!needle) {
+			return { line: fallbackLine, character: 0 };
+		}
+
+		const searchStart = Math.max(0, fallbackLine - 1);
+		const searchEnd = Math.min(this.document.lineCount - 1, fallbackLine + 8);
+		for (let lineIndex = searchStart; lineIndex <= searchEnd; lineIndex++) {
+			const character = this.document.lineAt(lineIndex).text.indexOf(needle);
+			if (character !== -1) {
+				return { line: lineIndex, character };
+			}
+		}
+
+		return { line: fallbackLine, character: 0 };
 	}
 
 	private html(webview: vscode.Webview) {
@@ -356,7 +379,12 @@ class LatexPreview {
 
 			const line = Number(target.dataset.sourceLine);
 			if (Number.isFinite(line)) {
-				vscode.postMessage({ type: 'jumpToLine', line });
+				const selection = window.getSelection();
+				const selectedText = selection ? selection.toString() : '';
+				vscode.postMessage({ type: 'jumpToLine', line, selectedText });
+				if (selection) {
+					selection.removeAllRanges();
+				}
 			}
 		});
 
@@ -436,7 +464,10 @@ class LatexPreview {
 					continue;
 				}
 
-				appendInlineLatex(ensureParagraph(sourceLine), line + ' ');
+				const lineSpan = element('span', '', '');
+				setSourceLine(lineSpan, sourceLine);
+				appendInlineLatex(lineSpan, line + ' ');
+				ensureParagraph(sourceLine).append(lineSpan);
 				sourceLine++;
 			}
 		}
@@ -930,4 +961,8 @@ function getNonce() {
 		text += possible.charAt(Math.floor(Math.random() * possible.length));
 	}
 	return text;
+}
+
+function normalizeSelectedText(value: string) {
+	return value.replace(/\s+/g, ' ').trim();
 }

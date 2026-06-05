@@ -1,71 +1,34 @@
-# latex-visualizer README
+# LaTeX Visualizer
 
-This is the README for your extension "latex-visualizer". After writing up a brief description, we recommend including the following sections.
+A lightweight VS Code preview for LaTeX prose and formulas. It renders the active `.tex` file in a side preview without requiring a TeX installation, using KaTeX for math and simple HTML approximations for common document structures.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+- Open a live preview from the editor title button or the `Open LaTeX Preview` command.
+- Render inline math, display math, and common math environments with KaTeX.
+- Show readable previews for headings, paragraphs, figures, tables, and algorithm blocks.
+- Use image placeholders that preserve declared `width` / `height` information.
+- Double-click preview content to jump back to the corresponding source line, with word-level targeting for text where possible.
+- Keep rendering local to the current file; malformed formulas show local KaTeX errors instead of breaking the whole preview.
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+No TeX distribution is required. The extension uses bundled JavaScript dependencies.
 
-## Extension Settings
+## Known Limitations
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+- This is an approximate preview, not a TeX compiler.
+- Layout details such as page breaks, floats, and package-specific formatting are not reproduced.
+- Cross-file projects, bibliography resolution, and full macro expansion are not implemented.
+- TikZ and PDF generation are intentionally out of scope for the current release.
 
-For example:
+## Development
 
-This extension contributes the following settings:
+```bash
+npm install
+npm run compile
+npm run lint
+npm run sample
+```
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+`npm run sample` checks the formula renderer against the local `samples/*.tex` fixtures.
