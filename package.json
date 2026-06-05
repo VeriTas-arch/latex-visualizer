@@ -2,7 +2,7 @@
     "name": "latex-visualizer",
     "displayName": "LaTeX Visualizer",
     "description": "A lightweight live preview for LaTeX prose and formulas.",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "icon": "image/icon.png",
     "publisher": "ovolab-veritas",
     "repository": {
