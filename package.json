@@ -7,7 +7,7 @@
     "publisher": "ovolab-veritas",
     "repository": {
         "type": "git",
-        "url": "https://github.com/VeriTas-arch/parquet-visualizer"
+        "url": "https://github.com/VeriTas-arch/latex-visualizer"
     },
     "license": "BSD 3-Clause",
     "engines": {
