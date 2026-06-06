@@ -2,7 +2,7 @@
     "name": "latex-visualizer",
     "displayName": "LaTeX Visualizer",
     "description": "A lightweight live preview for LaTeX prose and formulas.",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "icon": "image/icon.png",
     "publisher": "ovolab-veritas",
     "repository": {
@@ -81,7 +81,7 @@
         "lint": "eslint src"
     },
     "devDependencies": {
-        "@types/node": "22.x",
+        "@types/node": "^22.19.20",
         "@types/vscode": "^1.120.0",
         "eslint": "^9.39.3",
         "typescript": "^5.9.3",

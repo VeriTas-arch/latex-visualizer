@@ -1,0 +1,222 @@
+		:root {
+			color-scheme: light dark;
+			--bg: var(--vscode-editor-background);
+			--fg: var(--vscode-editor-foreground);
+			--muted: var(--vscode-descriptionForeground);
+			--border: var(--vscode-panel-border);
+			--code: var(--vscode-textCodeBlock-background);
+			--error-bg: color-mix(in srgb, var(--vscode-inputValidation-errorBackground) 55%, transparent);
+			--error-border: var(--vscode-inputValidation-errorBorder);
+		}
+
+		body {
+			margin: 0;
+			background: var(--bg);
+			color: var(--fg);
+			font-family: var(--vscode-font-family);
+			font-size: var(--vscode-font-size);
+			line-height: 1.65;
+		}
+
+		.toolbar {
+			position: sticky;
+			top: 0;
+			z-index: 2;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			padding: 8px 16px;
+			border-bottom: 1px solid var(--border);
+			background: var(--bg);
+		}
+
+		.file {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			color: var(--muted);
+		}
+
+		.toolbar-actions {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			flex: 0 0 auto;
+		}
+
+		.zoom-readout {
+			min-width: 42px;
+			color: var(--muted);
+			font-variant-numeric: tabular-nums;
+			text-align: right;
+		}
+
+		button {
+			color: var(--fg);
+			background: var(--vscode-button-secondaryBackground);
+			border: 1px solid var(--border);
+			border-radius: 4px;
+			padding: 4px 10px;
+			cursor: pointer;
+		}
+
+		button:hover {
+			background: var(--vscode-button-secondaryHoverBackground);
+		}
+
+		main {
+			box-sizing: border-box;
+			max-width: 920px;
+			margin: 0 auto;
+			padding: 20px 24px 48px;
+		}
+
+		h1, h2, h3, h4 {
+			line-height: 1.3;
+			margin: 1.4em 0 0.55em;
+		}
+
+		p {
+			margin: 0.7em 0;
+		}
+
+		[data-source-line] {
+			cursor: default;
+		}
+
+		.math-block {
+			overflow-x: auto;
+			margin: 1em 0;
+			padding: 10px 0;
+		}
+
+		.math-inline {
+			padding: 0 1px;
+		}
+
+		.latex-ref {
+			display: inline-block;
+			max-width: 28em;
+			margin: 0 2px;
+			padding: 0 5px;
+			border: 1px solid var(--border);
+			border-radius: 4px;
+			background: var(--code);
+			color: var(--fg);
+			font-family: var(--vscode-editor-font-family);
+			font-size: 0.88em;
+			line-height: 1.45;
+			vertical-align: baseline;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.latex-ref-cite {
+			color: var(--vscode-textLink-foreground);
+		}
+
+		.latex-ref-label {
+			color: var(--muted);
+		}
+
+		.render-error {
+			border-left: 3px solid var(--error-border);
+			background: var(--error-bg);
+			padding: 8px 10px;
+			overflow-x: auto;
+		}
+
+		.render-error code,
+		pre {
+			font-family: var(--vscode-editor-font-family);
+			background: var(--code);
+		}
+
+		pre {
+			padding: 8px;
+			overflow-x: auto;
+		}
+
+		.placeholder {
+			color: var(--muted);
+			font-style: italic;
+		}
+
+		.figure-placeholder {
+			margin: 1.1em 0;
+			padding: 12px;
+			border: 1px dashed var(--border);
+			background: var(--code);
+		}
+
+		.image-box {
+			box-sizing: border-box;
+			min-height: 96px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			margin: 0 auto;
+			padding: 12px;
+			border: 1px solid var(--border);
+			color: var(--muted);
+			text-align: center;
+		}
+
+		.caption {
+			margin-top: 8px;
+			color: var(--muted);
+			font-style: italic;
+		}
+
+		.algorithm-wrap {
+			margin: 1em 0;
+			padding: 10px 12px;
+			border: 1px solid var(--border);
+			background: var(--code);
+		}
+
+		.algorithm-title {
+			margin-bottom: 8px;
+			font-weight: 600;
+		}
+
+		.algorithm-steps {
+			margin: 0;
+			padding-left: 22px;
+		}
+
+		.algorithm-steps li {
+			margin: 4px 0;
+		}
+
+		.algorithm-keyword {
+			margin-right: 6px;
+			color: var(--muted);
+			font-weight: 600;
+		}
+
+		.table-wrap {
+			overflow-x: auto;
+			margin: 1em 0;
+		}
+
+		table {
+			border-collapse: collapse;
+			width: 100%;
+			font-size: 0.95em;
+		}
+
+		th,
+		td {
+			border: 1px solid var(--border);
+			padding: 6px 8px;
+			vertical-align: top;
+		}
+
+		th {
+			font-weight: 600;
+			background: var(--code);
+		}
