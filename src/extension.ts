@@ -1,169 +1,189 @@
 import * as vscode from 'vscode';
+import { clearTimeout, setTimeout } from 'node:timers';
 
 const commandId = 'latex-visualizer.openPreview';
 
 export function activate(context: vscode.ExtensionContext) {
-	const preview = new LatexPreview(context.extensionUri);
+    const preview = new LatexPreview(context.extensionUri);
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand(commandId, () => preview.open()),
-		vscode.workspace.onDidChangeTextDocument((event) => preview.onDocumentChange(event.document)),
-		vscode.window.onDidChangeActiveTextEditor((editor) => preview.onActiveEditorChange(editor))
-	);
+    context.subscriptions.push(
+        vscode.commands.registerCommand(commandId, () => preview.open()),
+        vscode.workspace.onDidChangeTextDocument((event) => preview.onDocumentChange(event.document)),
+        vscode.window.onDidChangeActiveTextEditor((editor) => preview.onActiveEditorChange(editor)),
+        vscode.workspace.onDidChangeConfiguration((event) => preview.onConfigurationChange(event))
+    );
 }
 
-export function deactivate() {}
+export function deactivate() { }
 
 class LatexPreview {
-	private panel: vscode.WebviewPanel | undefined;
-	private document: vscode.TextDocument | undefined;
-	private debounce: NodeJS.Timeout | undefined;
-	private webviewReady = false;
-	private lastSentUri: string | undefined;
-	private lastSentVersion: number | undefined;
-	private sourceViewColumn: vscode.ViewColumn | undefined;
+    private panel: vscode.WebviewPanel | undefined;
+    private document: vscode.TextDocument | undefined;
+    private debounce: ReturnType<typeof setTimeout> | undefined;
+    private webviewReady = false;
+    private lastSentUri: string | undefined;
+    private lastSentVersion: number | undefined;
+    private sourceViewColumn: vscode.ViewColumn | undefined;
 
-	constructor(private readonly extensionUri: vscode.Uri) {}
+    constructor(private readonly extensionUri: vscode.Uri) { }
 
-	open() {
-		const editor = vscode.window.activeTextEditor;
-		if (!editor) {
-			void vscode.window.showInformationMessage('Open a LaTeX file before opening the preview.');
-			return;
-		}
+    open() {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            void vscode.window.showInformationMessage('Open a LaTeX file before opening the preview.');
+            return;
+        }
 
-		this.document = editor.document;
-		this.sourceViewColumn = editor.viewColumn;
+        this.document = editor.document;
+        this.sourceViewColumn = editor.viewColumn;
 
-		if (this.panel) {
-			this.panel.reveal(vscode.ViewColumn.Beside);
-			this.postRender();
-			return;
-		}
+        if (this.panel) {
+            this.panel.reveal(vscode.ViewColumn.Beside, true);
+            this.postRender();
+            return;
+        }
 
-		this.webviewReady = false;
-		this.panel = vscode.window.createWebviewPanel(
-			'latexVisualizerPreview',
-			`LaTeX Preview: ${editor.document.fileName.split(/[\\/]/).pop() ?? 'Untitled'}`,
-			vscode.ViewColumn.Beside,
-			{
-				enableScripts: true,
-				retainContextWhenHidden: true,
-				localResourceRoots: [
-					vscode.Uri.joinPath(this.extensionUri, 'node_modules', 'katex', 'dist')
-				]
-			}
-		);
-		this.panel.webview.onDidReceiveMessage((message) => {
-			if (message?.type === 'ready') {
-				this.webviewReady = true;
-				this.postRender(true);
-			} else if (message?.type === 'jumpToLine' && typeof message.line === 'number') {
-				void this.jumpToLine(message.line, typeof message.selectedText === 'string' ? message.selectedText : '');
-			}
-		});
-		this.panel.webview.html = this.html(this.panel.webview);
+        this.webviewReady = false;
+        this.panel = vscode.window.createWebviewPanel(
+            'latexVisualizerPreview',
+            `LaTeX Preview: ${editor.document.fileName.split(/[\\/]/).pop() ?? 'Untitled'}`,
+            { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [
+                    vscode.Uri.joinPath(this.extensionUri, 'node_modules', 'katex', 'dist')
+                ]
+            }
+        );
+        this.panel.webview.onDidReceiveMessage((message) => {
+            if (message?.type === 'ready') {
+                this.webviewReady = true;
+                this.postSettings();
+                this.postRender(true);
+            } else if (message?.type === 'jumpToLine' && typeof message.line === 'number') {
+                void this.jumpToLine(message.line, typeof message.selectedText === 'string' ? message.selectedText : '');
+            }
+        });
+        this.panel.webview.html = this.html(this.panel.webview);
 
-		this.panel.onDidDispose(() => {
-			this.panel = undefined;
-			this.document = undefined;
-			this.webviewReady = false;
-			this.lastSentUri = undefined;
-			this.lastSentVersion = undefined;
-			this.clearDebounce();
-		});
-	}
+        this.panel.onDidDispose(() => {
+            this.panel = undefined;
+            this.document = undefined;
+            this.webviewReady = false;
+            this.lastSentUri = undefined;
+            this.lastSentVersion = undefined;
+            this.clearDebounce();
+        });
+    }
 
-	onDocumentChange(document: vscode.TextDocument) {
-		if (!this.panel || !this.document || document.uri.toString() !== this.document.uri.toString()) {
-			return;
-		}
+    onDocumentChange(document: vscode.TextDocument) {
+        if (!this.panel || !this.document || document.uri.toString() !== this.document.uri.toString()) {
+            return;
+        }
 
-		this.clearDebounce();
-		this.debounce = setTimeout(() => this.postRender(), 250);
-	}
+        this.clearDebounce();
+        this.debounce = setTimeout(() => this.postRender(), 250);
+    }
 
-	onActiveEditorChange(editor: vscode.TextEditor | undefined) {
-		if (!this.panel || !editor || editor.document.languageId !== 'latex') {
-			return;
-		}
+    onActiveEditorChange(editor: vscode.TextEditor | undefined) {
+        if (!this.panel || !editor || editor.document.languageId !== 'latex') {
+            return;
+        }
 
-		this.document = editor.document;
-		this.sourceViewColumn = editor.viewColumn;
-		this.panel.title = `LaTeX Preview: ${editor.document.fileName.split(/[\\/]/).pop() ?? 'Untitled'}`;
-		this.postRender();
-	}
+        this.document = editor.document;
+        this.sourceViewColumn = editor.viewColumn;
+        this.panel.title = `LaTeX Preview: ${editor.document.fileName.split(/[\\/]/).pop() ?? 'Untitled'}`;
+        this.postRender();
+    }
 
-	private postRender(force = false) {
-		if (!this.panel || !this.document || !this.webviewReady) {
-			return;
-		}
+    onConfigurationChange(event: vscode.ConfigurationChangeEvent) {
+        if (event.affectsConfiguration('latexVisualizer.previewZoom') || event.affectsConfiguration('latexVisualizer.previewFontSize')) {
+            this.postSettings();
+        }
+    }
 
-		const uri = this.document.uri.toString();
-		if (!force && this.lastSentUri === uri && this.lastSentVersion === this.document.version) {
-			return;
-		}
+    private postRender(force = false) {
+        if (!this.panel || !this.document || !this.webviewReady) {
+            return;
+        }
 
-		this.lastSentUri = uri;
-		this.lastSentVersion = this.document.version;
-		void this.panel.webview.postMessage({
-			type: 'render',
-			fileName: this.document.fileName,
-			source: this.document.getText()
-		});
-	}
+        const uri = this.document.uri.toString();
+        if (!force && this.lastSentUri === uri && this.lastSentVersion === this.document.version) {
+            return;
+        }
 
-	private clearDebounce() {
-		if (this.debounce) {
-			clearTimeout(this.debounce);
-			this.debounce = undefined;
-		}
-	}
+        this.lastSentUri = uri;
+        this.lastSentVersion = this.document.version;
+        void this.panel.webview.postMessage({
+            type: 'render',
+            fileName: this.document.fileName,
+            source: this.document.getText()
+        });
+    }
 
-	private async jumpToLine(line: number, selectedText: string) {
-		if (!this.document) {
-			return;
-		}
+    private postSettings() {
+        if (!this.panel || !this.webviewReady) {
+            return;
+        }
 
-		const target = this.findJumpTarget(line, selectedText);
-		const editor = await vscode.window.showTextDocument(this.document, {
-			viewColumn: this.sourceViewColumn ?? vscode.ViewColumn.One,
-			preserveFocus: false
-		});
-		const position = new vscode.Position(target.line, target.character);
-		editor.selection = new vscode.Selection(position, position);
-		editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-	}
+        void this.panel.webview.postMessage({
+            type: 'settings',
+            zoom: getPreviewZoomSettings()
+        });
+    }
 
-	private findJumpTarget(line: number, selectedText: string) {
-		if (!this.document) {
-			return { line: 0, character: 0 };
-		}
+    private clearDebounce() {
+        if (this.debounce) {
+            clearTimeout(this.debounce);
+            this.debounce = undefined;
+        }
+    }
 
-		const fallbackLine = Math.max(0, Math.min(this.document.lineCount - 1, Math.floor(line) - 1));
-		const needle = normalizeSelectedText(selectedText);
-		if (!needle) {
-			return { line: fallbackLine, character: 0 };
-		}
+    private async jumpToLine(line: number, selectedText: string) {
+        if (!this.document) {
+            return;
+        }
 
-		const searchStart = Math.max(0, fallbackLine - 1);
-		const searchEnd = Math.min(this.document.lineCount - 1, fallbackLine + 8);
-		for (let lineIndex = searchStart; lineIndex <= searchEnd; lineIndex++) {
-			const character = this.document.lineAt(lineIndex).text.indexOf(needle);
-			if (character !== -1) {
-				return { line: lineIndex, character };
-			}
-		}
+        const target = this.findJumpTarget(line, selectedText);
+        const editor = await vscode.window.showTextDocument(this.document, {
+            viewColumn: this.sourceViewColumn ?? vscode.ViewColumn.One,
+            preserveFocus: false
+        });
+        const position = new vscode.Position(target.line, target.character);
+        editor.selection = new vscode.Selection(position, position);
+        editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    }
 
-		return { line: fallbackLine, character: 0 };
-	}
+    private findJumpTarget(line: number, selectedText: string) {
+        if (!this.document) {
+            return { line: 0, character: 0 };
+        }
 
-	private html(webview: vscode.Webview) {
-		const nonce = getNonce();
-		const katexCss = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'node_modules', 'katex', 'dist', 'katex.min.css'));
-		const katexJs = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'node_modules', 'katex', 'dist', 'katex.min.js'));
+        const fallbackLine = Math.max(0, Math.min(this.document.lineCount - 1, Math.floor(line) - 1));
+        const needle = normalizeSelectedText(selectedText);
+        if (!needle) {
+            return { line: fallbackLine, character: 0 };
+        }
 
-		return `<!DOCTYPE html>
+        const searchStart = Math.max(0, fallbackLine - 1);
+        const searchEnd = Math.min(this.document.lineCount - 1, fallbackLine + 8);
+        for (let lineIndex = searchStart; lineIndex <= searchEnd; lineIndex++) {
+            const character = this.document.lineAt(lineIndex).text.indexOf(needle);
+            if (character !== -1) {
+                return { line: lineIndex, character };
+            }
+        }
+
+        return { line: fallbackLine, character: 0 };
+    }
+
+    private html(webview: vscode.Webview) {
+        const nonce = getNonce();
+        const katexCss = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'node_modules', 'katex', 'dist', 'katex.min.css'));
+        const katexJs = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'node_modules', 'katex', 'dist', 'katex.min.js'));
+
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
@@ -212,6 +232,20 @@ class LatexPreview {
 			color: var(--muted);
 		}
 
+		.toolbar-actions {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			flex: 0 0 auto;
+		}
+
+		.zoom-readout {
+			min-width: 42px;
+			color: var(--muted);
+			font-variant-numeric: tabular-nums;
+			text-align: right;
+		}
+
 		button {
 			color: var(--fg);
 			background: var(--vscode-button-secondaryBackground);
@@ -253,6 +287,32 @@ class LatexPreview {
 
 		.math-inline {
 			padding: 0 1px;
+		}
+
+		.latex-ref {
+			display: inline-block;
+			max-width: 28em;
+			margin: 0 2px;
+			padding: 0 5px;
+			border: 1px solid var(--border);
+			border-radius: 4px;
+			background: var(--code);
+			color: var(--fg);
+			font-family: var(--vscode-editor-font-family);
+			font-size: 0.88em;
+			line-height: 1.45;
+			vertical-align: baseline;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.latex-ref-cite {
+			color: var(--vscode-textLink-foreground);
+		}
+
+		.latex-ref-label {
+			color: var(--muted);
 		}
 
 		.render-error {
@@ -358,7 +418,10 @@ class LatexPreview {
 <body>
 	<div class="toolbar">
 		<div class="file" id="file">No document</div>
-		<button id="refresh" type="button">Refresh</button>
+		<div class="toolbar-actions">
+			<span class="zoom-readout" id="zoom">100%</span>
+			<button id="refresh" type="button">Refresh</button>
+		</div>
 	</div>
 	<main id="preview"></main>
 	<script nonce="${nonce}" src="${katexJs}"></script>
@@ -366,11 +429,24 @@ class LatexPreview {
 		const vscode = acquireVsCodeApi();
 		const preview = document.getElementById('preview');
 		const file = document.getElementById('file');
+		const zoom = document.getElementById('zoom');
 		let currentSource = '';
+		let zoomSettings = { default: 100, min: 20, max: 300, step: 10, fontSize: 14 };
+		let zoomPercent = clampZoom(vscode.getState()?.zoomPercent ?? zoomSettings.default);
 
 		vscode.postMessage({ type: 'ready' });
+		applyZoom();
 
 		document.getElementById('refresh').addEventListener('click', () => render(currentSource));
+		preview.addEventListener('wheel', (event) => {
+			if (!event.ctrlKey) {
+				return;
+			}
+
+			event.preventDefault();
+			setZoom(zoomPercent + (event.deltaY < 0 ? zoomSettings.step : -zoomSettings.step));
+		}, { passive: false });
+
 		preview.addEventListener('dblclick', (event) => {
 			const target = event.target instanceof Element ? event.target.closest('[data-source-line]') : undefined;
 			if (!target) {
@@ -389,6 +465,12 @@ class LatexPreview {
 		});
 
 		window.addEventListener('message', (event) => {
+			if (event.data.type === 'settings') {
+				zoomSettings = normalizeZoomSettings(event.data.zoom);
+				setZoom(zoomPercent);
+				return;
+			}
+
 			if (event.data.type !== 'render') {
 				return;
 			}
@@ -400,6 +482,41 @@ class LatexPreview {
 
 		function render(source) {
 			preview.replaceChildren(...renderParts(scanMath(source)));
+		}
+
+		function setZoom(value) {
+			zoomPercent = clampZoom(value);
+			applyZoom();
+			vscode.setState({ ...(vscode.getState() || {}), zoomPercent });
+		}
+
+		function applyZoom() {
+			preview.style.fontSize = (zoomSettings.fontSize * zoomPercent / 100) + 'px';
+			zoom.textContent = Math.round(zoomPercent) + '%';
+		}
+
+		function normalizeZoomSettings(settings) {
+			const min = finiteNumber(settings?.min, 20);
+			const max = Math.max(min, finiteNumber(settings?.max, 300));
+			return {
+				default: clamp(finiteNumber(settings?.default, 100), min, max),
+				min,
+				max,
+				step: Math.max(1, finiteNumber(settings?.step, 10)),
+				fontSize: clamp(finiteNumber(settings?.fontSize, 14), 8, 48)
+			};
+		}
+
+		function clampZoom(value) {
+			return clamp(finiteNumber(value, zoomSettings.default), zoomSettings.min, zoomSettings.max);
+		}
+
+		function clamp(value, min, max) {
+			return Math.min(max, Math.max(min, value));
+		}
+
+		function finiteNumber(value, fallback) {
+			return Number.isFinite(Number(value)) ? Number(value) : fallback;
 		}
 
 		function renderParts(parts) {
@@ -911,6 +1028,8 @@ class LatexPreview {
 		function inlineMarkup(text) {
 			const tokens = [];
 			let value = text
+				.replace(/\\\\(cite|citet|citep)\\{([^}]*)\\}/g, (_, command, key) => protectReference(tokens, command, key, 'latex-ref-cite'))
+				.replace(/\\\\(ref|eqref|autoref|cref)\\{([^}]*)\\}/g, (_, command, key) => protectReference(tokens, command, key, 'latex-ref-label'))
 				.replace(/\\\\textbf\\{([^{}]*)\\}/g, (_, content) => protect(tokens, 'strong', content))
 				.replace(/\\\\(?:textit|emph)\\{([^{}]*)\\}/g, (_, content) => protect(tokens, 'em', content))
 				.replace(/\\\\texttt\\{([^{}]*)\\}/g, (_, content) => protect(tokens, 'code', content))
@@ -926,6 +1045,14 @@ class LatexPreview {
 		function protect(tokens, tag, content, style = '') {
 			const styleAttribute = style ? ' style="' + escapeHtml(style) + '"' : '';
 			const html = '<' + tag + styleAttribute + '>' + escapeHtml(cleanInlineText(content)) + '</' + tag + '>';
+			const token = '@@TOKEN_' + tokens.length + '@@';
+			tokens.push(html);
+			return token;
+		}
+
+		function protectReference(tokens, command, key, className) {
+			const label = command + ':' + cleanInlineText(key);
+			const html = '<span class="latex-ref ' + className + '" title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>';
 			const token = '@@TOKEN_' + tokens.length + '@@';
 			tokens.push(html);
 			return token;
@@ -951,18 +1078,40 @@ class LatexPreview {
 	</script>
 </body>
 </html>`;
-	}
+    }
 }
 
 function getNonce() {
-	let text = '';
-	const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-	for (let i = 0; i < 32; i++) {
-		text += possible.charAt(Math.floor(Math.random() * possible.length));
-	}
-	return text;
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
 }
 
 function normalizeSelectedText(value: string) {
-	return value.replace(/\s+/g, ' ').trim();
+    return value.replace(/\s+/g, ' ').trim();
+}
+
+function getPreviewZoomSettings() {
+    const config = vscode.workspace.getConfiguration('latexVisualizer');
+    const min = finiteNumber(config.get<number>('previewZoom.min'), 20);
+    const max = Math.max(min, finiteNumber(config.get<number>('previewZoom.max'), 300));
+
+    return {
+        default: clamp(finiteNumber(config.get<number>('previewZoom.default'), 100), min, max),
+        min,
+        max,
+        step: Math.max(1, finiteNumber(config.get<number>('previewZoom.step'), 10)),
+        fontSize: clamp(finiteNumber(config.get<number>('previewFontSize'), 16), 8, 48)
+    };
+}
+
+function finiteNumber(value: number | undefined, fallback: number) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, value));
 }

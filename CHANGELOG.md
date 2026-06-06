@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.3
+
+- Added configurable preview zoom.
+- Added configurable base preview font size.
+- Added `Ctrl` + mouse wheel zoom inside the preview.
+- Improved reference rendering with inline badges.
+- Kept preview focus from stealing the source editor group when opened.
+
 ## 0.0.2
 
 - Added a side preview command for active LaTeX files.

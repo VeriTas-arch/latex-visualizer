@@ -9,11 +9,20 @@ A lightweight VS Code preview for LaTeX prose and formulas. It renders the activ
 - Show readable previews for headings, paragraphs, figures, tables, and algorithm blocks.
 - Use image placeholders that preserve declared `width` / `height` information.
 - Double-click preview content to jump back to the corresponding source line, with word-level targeting for text where possible.
+- Zoom preview content with `Ctrl` + mouse wheel.
 - Keep rendering local to the current file; malformed formulas show local KaTeX errors instead of breaking the whole preview.
 
 ## Requirements
 
 No TeX distribution is required. The extension uses bundled JavaScript dependencies.
+
+## Settings
+
+- `latexVisualizer.previewFontSize`: base preview font size in pixels.
+- `latexVisualizer.previewZoom.default`: default preview zoom percentage.
+- `latexVisualizer.previewZoom.min`: minimum preview zoom percentage.
+- `latexVisualizer.previewZoom.max`: maximum preview zoom percentage.
+- `latexVisualizer.previewZoom.step`: zoom step used by `Ctrl` + mouse wheel.
 
 ## Known Limitations
 

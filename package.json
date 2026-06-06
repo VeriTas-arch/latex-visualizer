@@ -32,6 +32,46 @@
                     "group": "navigation"
                 }
             ]
+        },
+        "configuration": {
+            "title": "LaTeX Visualizer",
+            "properties": {
+                "latexVisualizer.previewFontSize": {
+                    "type": "number",
+                    "default": 16,
+                    "minimum": 8,
+                    "maximum": 48,
+                    "description": "Base preview font size in pixels."
+                },
+                "latexVisualizer.previewZoom.default": {
+                    "type": "number",
+                    "default": 100,
+                    "minimum": 20,
+                    "maximum": 300,
+                    "description": "Default preview zoom percentage."
+                },
+                "latexVisualizer.previewZoom.min": {
+                    "type": "number",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 300,
+                    "description": "Minimum preview zoom percentage."
+                },
+                "latexVisualizer.previewZoom.max": {
+                    "type": "number",
+                    "default": 300,
+                    "minimum": 20,
+                    "maximum": 1000,
+                    "description": "Maximum preview zoom percentage."
+                },
+                "latexVisualizer.previewZoom.step": {
+                    "type": "number",
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Preview zoom percentage step used by Ctrl+mouse wheel."
+                }
+            }
         }
     },
     "scripts": {
